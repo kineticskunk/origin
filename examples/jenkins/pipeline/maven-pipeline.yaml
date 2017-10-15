@@ -87,7 +87,6 @@ objects:
              timeout(time: 20, unit: 'MINUTES') {
                 def appName="${APP_NAME}"
                 def project=""
-                def mvn_version = 'M3'
 
                 node {
                   stage("Initialize") {
@@ -99,15 +98,9 @@ objects:
                   stage("Checkout") {
                     git url: "${GITLAB_SOURCE_URL}", branch: "${GITLAB_SOURCE_REF}, credentialsId: ${}"
                   }
-                  withEnv( ["PATH+MAVEN=${tool mvn_version}/bin"] ) {
-                    stage("Unit Test NAR") {
-                      dir ('se-processors') {
-                        configFileProvider(
-                          [configFile(fileId: 'DefaultMavenQASettings', variable: 'MAVEN_SETTINGS')]) {
-                          sh 'mvn -s $MAVEN_SETTINGS clean install -X'
-                        }
-                      }
-                    }
+                  stage("Build WAR") {
+                    sh "mvn clean package -Popenshift"
+                    stash name:"war", includes:"target/ROOT.war"
                   }
                 }
 
