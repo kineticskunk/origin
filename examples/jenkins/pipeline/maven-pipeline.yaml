@@ -8,21 +8,26 @@ parameters:
   displayName: Application Name
   required: true
   value: openshift-jee-sample
-- name: GIT_SOURCE_URL
+- name: GITLAB_SOURCE_URL
   description: The source URL for the application
   displayName: Source URL
   required: true
-  value: https://github.com/openshift/openshift-jee-sample.git
-- name: GIT_SOURCE_REF
+  value: git@pbdpgl1zafsrh.vodacom.corp:dataengineering/bdp-de-nifi.git
+- name: GITLAB_CREDENTIALS_ID
+  description: The Jenkins Git credential ID configured in Jenkins
+  displayName: Jenkins Git Credential ID
+  required: true
+  value: git@pbdpgl1zafsrh.vodacom.corp:dataengineering/bdp-de-nifi.git
+- name: GITLAB_SOURCE_REF
   description: The source Ref for the application
   displayName: Source Ref
   required: true
   value: master
-- description: Github trigger secret.  A difficult to guess string encoded as part of the webhook URL.  Not encrypted.
-  displayName: GitHub Webhook Secret
+- description: GITLAB trigger secret.  A difficult to guess string encoded as part of the webhook URL.  Not encrypted.
+  displayName: GITLAB Webhook Secret
   from: '[a-zA-Z0-9]{40}'
   generate: expression
-  name: GITHUB_WEBHOOK_SECRET
+  name: GITLAB_WEBHOOK_SECRET
   required: true
 - description: A secret string used to configure the Generic webhook.
   displayName: Generic Webhook Secret
@@ -73,11 +78,16 @@ objects:
   spec:
     strategy:
       jenkinsPipelineStrategy:
+        autoProvisionEnabled: false 
+        templateNamespace: continuousintegration 
+        templateName: jenkins-external-services
+        serviceName: external-jenkins 
         jenkinsfile: |-
           try {
              timeout(time: 20, unit: 'MINUTES') {
                 def appName="${APP_NAME}"
                 def project=""
+                def mvn_version = 'M3'
 
                 node {
                   stage("Initialize") {
@@ -87,11 +97,17 @@ objects:
 
                 node("maven") {
                   stage("Checkout") {
-                    git url: "${GIT_SOURCE_URL}", branch: "${GIT_SOURCE_REF}"
+                    git url: "${GITLAB_SOURCE_URL}", branch: "${GITLAB_SOURCE_REF}, credentialsId: ${}"
                   }
-                  stage("Build WAR") {
-                    sh "mvn clean package -Popenshift"
-                    stash name:"war", includes:"target/ROOT.war"
+                  withEnv( ["PATH+MAVEN=${tool mvn_version}/bin"] ) {
+                    stage("Unit Test NAR") {
+                      dir ('se-processors') {
+                        configFileProvider(
+                          [configFile(fileId: 'DefaultMavenQASettings', variable: 'MAVEN_SETTINGS')]) {
+                          sh 'mvn -s $MAVEN_SETTINGS clean install -X'
+                        }
+                      }
+                    }
                   }
                 }
 
@@ -114,9 +130,9 @@ objects:
           }
       type: JenkinsPipeline
     triggers:
-    - github:
-        secret: "${GITHUB_WEBHOOK_SECRET}"
-      type: GitHub
+    - GITLAB:
+        secret: "${GITLAB_WEBHOOK_SECRET}"
+      type: GITLAB
     - generic:
         secret: "${GENERIC_WEBHOOK_SECRET}"
       type: Generic
